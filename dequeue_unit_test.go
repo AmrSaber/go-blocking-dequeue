@@ -98,8 +98,10 @@ func TestBlockingPushFront(t *testing.T) {
 	}
 
 	// Remove the element to empty the dequeue and unblock the goroutine
+	dequeue.writeCond.L.Lock()
 	dequeue.list.Remove(dequeue.list.Front())
 	dequeue.writeCond.Signal()
+	dequeue.writeCond.L.Unlock()
 	wg.Wait()
 
 	if dequeue.list.Front().Value.(int) != 2 {
@@ -143,8 +145,10 @@ func TestBlockingPushBack(t *testing.T) {
 	}
 
 	// Remove the element to empty the dequeue and unblock the goroutine
+	dequeue.writeCond.L.Lock()
 	dequeue.list.Remove(dequeue.list.Back())
 	dequeue.writeCond.Signal()
+	dequeue.writeCond.L.Unlock()
 	wg.Wait()
 
 	if dequeue.list.Back().Value.(int) != 2 {
@@ -194,8 +198,10 @@ func TestBlockingPopFront(t *testing.T) {
 	}
 
 	// Add element to empty the dequeue and unblock the goroutine
+	dequeue.writeCond.L.Lock()
 	dequeue.list.PushFront(1)
 	dequeue.writeCond.Signal()
+	dequeue.writeCond.L.Unlock()
 	wg.Wait()
 
 	if value != 1 {
@@ -245,8 +251,10 @@ func TestBlockingPopBack(t *testing.T) {
 	}
 
 	// Add element to empty the dequeue and unblock the goroutine
+	dequeue.writeCond.L.Lock()
 	dequeue.list.PushBack(1)
 	dequeue.writeCond.Signal()
+	dequeue.writeCond.L.Unlock()
 	wg.Wait()
 
 	if value != 1 {
@@ -295,8 +303,10 @@ func TestBlockingPeekFront(t *testing.T) {
 	}
 
 	// Add element to empty the dequeue and unblock the goroutine
+	dequeue.writeCond.L.Lock()
 	dequeue.list.PushFront(1)
 	dequeue.writeCond.Signal()
+	dequeue.writeCond.L.Unlock()
 	wg.Wait()
 
 	if value != 1 {
@@ -353,8 +363,10 @@ func TestBlockingPeekBack(t *testing.T) {
 	}
 
 	// Add element to empty the dequeue and unblock the goroutine
+	dequeue.writeCond.L.Lock()
 	dequeue.list.PushBack(1)
 	dequeue.writeCond.Signal()
+	dequeue.writeCond.L.Unlock()
 	wg.Wait()
 
 	if value != 1 {
