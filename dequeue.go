@@ -9,7 +9,7 @@ import (
 // Blocking dequeue, implemented with a linked list.
 // By default the dequeue has infinite capacity.
 // The dequeue is thread safe. And must not be copied.
-type blockingDequeue[T any] struct {
+type BlockingDequeue[T any] struct {
 	list        *list.List
 	itemAdded   *sync.Cond
 	itemRemoved *sync.Cond
@@ -20,8 +20,8 @@ type blockingDequeue[T any] struct {
 }
 
 // Creates a new blocking dequeue with infinite capacity.
-func NewBlockingDequeue[T any]() *blockingDequeue[T] {
-	d := new(blockingDequeue[T])
+func NewBlockingDequeue[T any]() *BlockingDequeue[T] {
+	d := new(BlockingDequeue[T])
 	d.list = list.New()
 	d.itemAdded = sync.NewCond(&sync.Mutex{})
 	d.itemRemoved = sync.NewCond(&sync.Mutex{})
@@ -31,7 +31,7 @@ func NewBlockingDequeue[T any]() *blockingDequeue[T] {
 // =================================[Push/Pop/Peek]=================================
 
 // Add an item into the front (top) of the dequeue. Blocks if dequeue is full.
-func (d *blockingDequeue[T]) PushFront(item T) {
+func (d *BlockingDequeue[T]) PushFront(item T) {
 	// If the dequeue is full, wait until an item is removed
 	d.itemRemoved.L.Lock()
 	defer d.itemRemoved.L.Unlock()
@@ -55,7 +55,7 @@ func (d *blockingDequeue[T]) PushFront(item T) {
 }
 
 // Add an item to the end of the dequeue. Blocks if dequeue is full.
-func (d *blockingDequeue[T]) PushBack(item T) {
+func (d *BlockingDequeue[T]) PushBack(item T) {
 	// If the dequeue is full, wait until an item is removed
 	d.itemRemoved.L.Lock()
 	defer d.itemRemoved.L.Unlock()
@@ -79,7 +79,7 @@ func (d *blockingDequeue[T]) PushBack(item T) {
 }
 
 // Read the first item (on the top/front) of the dequeue and remove it. Blocks if the dequeue is empty.
-func (d *blockingDequeue[T]) PopFront() T {
+func (d *BlockingDequeue[T]) PopFront() T {
 	// If the dequeue is empty, wait until an item is added
 	d.itemAdded.L.Lock()
 	defer d.itemAdded.L.Unlock()
@@ -105,7 +105,7 @@ func (d *blockingDequeue[T]) PopFront() T {
 }
 
 // Read the last item (at the end/back) of the dequeue and remove it. Blocks if the dequeue is empty.
-func (d *blockingDequeue[T]) PopBack() T {
+func (d *BlockingDequeue[T]) PopBack() T {
 	// If the dequeue is empty, wait until an item is added
 	d.itemAdded.L.Lock()
 	defer d.itemAdded.L.Unlock()
@@ -131,7 +131,7 @@ func (d *blockingDequeue[T]) PopBack() T {
 }
 
 // Read the first item of the dequeue without removing it. Blocks if the dequeue is empty.
-func (d *blockingDequeue[T]) PeekFront() T {
+func (d *BlockingDequeue[T]) PeekFront() T {
 	// If the dequeue is empty, wait until an item is added
 	d.itemAdded.L.Lock()
 	defer d.itemAdded.L.Unlock()
@@ -144,7 +144,7 @@ func (d *blockingDequeue[T]) PeekFront() T {
 }
 
 // Read the first item of the dequeue without removing it. Blocks if the dequeue is empty.
-func (d *blockingDequeue[T]) PeekBack() T {
+func (d *BlockingDequeue[T]) PeekBack() T {
 	// If the dequeue is empty, wait until an item is added
 	d.itemAdded.L.Lock()
 	defer d.itemAdded.L.Unlock()
@@ -159,7 +159,7 @@ func (d *blockingDequeue[T]) PeekBack() T {
 // ================================[Size/Capacity related]================================
 
 // Acquires all update locks and returns a function to release them.
-func (d *blockingDequeue[T]) acquireWriteLocks() func() {
+func (d *BlockingDequeue[T]) acquireWriteLocks() func() {
 	d.itemAdded.L.Lock()
 	d.itemRemoved.L.Lock()
 
@@ -172,7 +172,7 @@ func (d *blockingDequeue[T]) acquireWriteLocks() func() {
 // Set dequeue capacity, if capacity is 0, dequeue is infinite.
 // Capacity must also be greater than the current dequeue size.
 // If an invalid capacity is set, an error is returned and the dequeue capacity is not changed.
-func (d *blockingDequeue[T]) SetCapacity(capacity int) error {
+func (d *BlockingDequeue[T]) SetCapacity(capacity int) error {
 	if capacity < 0 {
 		return fmt.Errorf("capacity must be >= 0")
 	}
@@ -192,12 +192,12 @@ func (d *blockingDequeue[T]) SetCapacity(capacity int) error {
 	return nil
 }
 
-func (d *blockingDequeue[T]) Capacity() int {
+func (d *BlockingDequeue[T]) Capacity() int {
 	return d.capacity
 }
 
 // Return the number of elements in the dequeue.
-func (d *blockingDequeue[T]) Size() int {
+func (d *BlockingDequeue[T]) Size() int {
 	release := d.acquireWriteLocks()
 	defer release()
 
@@ -205,12 +205,12 @@ func (d *blockingDequeue[T]) Size() int {
 }
 
 // Return true if the dequeue is empty without acquiring any locks.
-func (d *blockingDequeue[T]) isEmpty_unsafe() bool {
+func (d *BlockingDequeue[T]) isEmpty_unsafe() bool {
 	return d.list.Len() == 0
 }
 
 // Return true if the dequeue is empty.
-func (d *blockingDequeue[T]) IsEmpty() bool {
+func (d *BlockingDequeue[T]) IsEmpty() bool {
 	release := d.acquireWriteLocks()
 	defer release()
 
@@ -218,13 +218,13 @@ func (d *blockingDequeue[T]) IsEmpty() bool {
 }
 
 // Return true if the dequeue is full without acquiring any locks.
-func (d *blockingDequeue[T]) isFull_unsafe() bool {
+func (d *BlockingDequeue[T]) isFull_unsafe() bool {
 	return d.capacity > 0 && d.list.Len() == d.capacity
 }
 
 // Return true if the dequeue is full.
 // i.e. the dequeue has limited capacity and the current size is equal to that capacity.
-func (d *blockingDequeue[T]) IsFull() bool {
+func (d *BlockingDequeue[T]) IsFull() bool {
 	release := d.acquireWriteLocks()
 	defer release()
 
