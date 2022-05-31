@@ -1,6 +1,7 @@
 package blocking_dequeue
 
 import (
+	"math/rand"
 	"sync"
 	"testing"
 	"time"
@@ -195,4 +196,42 @@ func TestCapacityChange(t *testing.T) {
 	if dequeue.Size() != len(values) {
 		t.Errorf("Expected dequeue to have %d items, got %d", len(values), dequeue.Size())
 	}
+}
+
+// Test that no race condition happens due to capacity changes
+func TestConcurrentCapacityChange(t *testing.T) {
+	dequeue := NewBlockingDequeue[int]()
+	wg := sync.WaitGroup{}
+
+	// Read capacity concurrently
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			// Do random sleep
+			time.Sleep(time.Duration(rand.Int()) % 100 * time.Millisecond)
+
+			// Simulate reading the capacity
+			dequeue.Capacity()
+		}()
+	}
+
+	// Write capacity concurrently
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			// Do random sleep
+			time.Sleep(time.Duration(rand.Int()) % 100 * time.Millisecond)
+
+			// Simulate setting the capacity
+			dequeue.SetCapacity(rand.Int() % 100)
+		}()
+	}
+
+	wg.Wait()
+
+	// No checks need to be done, if the test is here without race conditions, it passed
 }

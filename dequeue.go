@@ -10,9 +10,12 @@ import (
 // By default the dequeue has infinite capacity.
 // The dequeue is thread safe. And must not be copied.
 type BlockingDequeue[T any] struct {
-	list      *list.List
-	writeCond *sync.Cond
-	capacity  int
+	list *list.List
+
+	writeCond    *sync.Cond    // condition used to lock and notify about writing to the encapsulated list
+	capacityLock *sync.RWMutex // lock used to protect the capacity
+
+	capacity int
 
 	OnFull  func() // Optional callback function invoked when the dequeue is full
 	OnEmpty func() // Optional callback function invoked when the dequeue is empty
@@ -24,6 +27,7 @@ func NewBlockingDequeue[T any]() *BlockingDequeue[T] {
 	d := new(BlockingDequeue[T])
 	d.list = list.New()
 	d.writeCond = sync.NewCond(&sync.Mutex{})
+	d.capacityLock = &sync.RWMutex{}
 	return d
 }
 
@@ -156,6 +160,10 @@ func (d *BlockingDequeue[T]) SetCapacity(capacity int) error {
 		return fmt.Errorf("capacity (%d) must be >= the current size (%d), or 0 for infinite capacity", capacity, d.list.Len())
 	}
 
+	// Acquire capacity lock before trying to update it
+	d.capacityLock.Lock()
+	defer d.capacityLock.Unlock()
+
 	d.capacity = capacity
 
 	// Notify any blocked producer now that the capacity has changed (potentially increased)
@@ -166,6 +174,9 @@ func (d *BlockingDequeue[T]) SetCapacity(capacity int) error {
 
 // Get current capacity of the dequeue.
 func (d *BlockingDequeue[T]) Capacity() int {
+	d.capacityLock.RLock()
+	defer d.capacityLock.RUnlock()
+
 	return d.capacity
 }
 
@@ -200,6 +211,9 @@ func (d *BlockingDequeue[T]) isFull_unsafe() bool {
 func (d *BlockingDequeue[T]) IsFull() bool {
 	d.writeCond.L.Lock()
 	defer d.writeCond.L.Unlock()
+
+	d.capacityLock.RLock()
+	defer d.capacityLock.RUnlock()
 
 	return d.isFull_unsafe()
 }
