@@ -15,11 +15,12 @@ type BlockingDequeue[T any] struct {
 	itemRemoved *sync.Cond
 	capacity    int
 
-	OnFull  func() // Callback function invoked when the dequeue is full
-	OnEmpty func() // Callback function invoked when the dequeue is empty
+	OnFull  func() // Optional callback function invoked when the dequeue is full
+	OnEmpty func() // Optional callback function invoked when the dequeue is empty
 }
 
 // Creates a new blocking dequeue with infinite capacity.
+// The dequeue MUST only be created using this method.
 func NewBlockingDequeue[T any]() *BlockingDequeue[T] {
 	d := new(BlockingDequeue[T])
 	d.list = list.New()
@@ -54,7 +55,7 @@ func (d *BlockingDequeue[T]) PushFront(item T) {
 	d.itemAdded.Signal()
 }
 
-// Add an item to the end of the dequeue. Blocks if dequeue is full.
+// Add an item to the back (bottom) of the dequeue. Blocks if dequeue is full.
 func (d *BlockingDequeue[T]) PushBack(item T) {
 	// If the dequeue is full, wait until an item is removed
 	d.itemRemoved.L.Lock()
@@ -143,7 +144,7 @@ func (d *BlockingDequeue[T]) PeekFront() T {
 	return element.Value.(T)
 }
 
-// Read the first item of the dequeue without removing it. Blocks if the dequeue is empty.
+// Read the last item of the dequeue without removing it. Blocks if the dequeue is empty.
 func (d *BlockingDequeue[T]) PeekBack() T {
 	// If the dequeue is empty, wait until an item is added
 	d.itemAdded.L.Lock()
@@ -171,7 +172,7 @@ func (d *BlockingDequeue[T]) acquireWriteLocks() func() {
 
 // Set dequeue capacity, if capacity is 0, dequeue is infinite.
 // Capacity must also be greater than the current dequeue size.
-// If an invalid capacity is set, an error is returned and the dequeue capacity is not changed.
+// If an invalid capacity is sent, an error is returned and the dequeue capacity is not changed.
 func (d *BlockingDequeue[T]) SetCapacity(capacity int) error {
 	if capacity < 0 {
 		return fmt.Errorf("capacity must be >= 0")
@@ -192,6 +193,7 @@ func (d *BlockingDequeue[T]) SetCapacity(capacity int) error {
 	return nil
 }
 
+// Get current capacity of the dequeue.
 func (d *BlockingDequeue[T]) Capacity() int {
 	return d.capacity
 }
@@ -204,7 +206,7 @@ func (d *BlockingDequeue[T]) Size() int {
 	return d.list.Len()
 }
 
-// Return true if the dequeue is empty without acquiring any locks.
+// Return true if the dequeue is empty, without acquiring any locks.
 func (d *BlockingDequeue[T]) isEmpty_unsafe() bool {
 	return d.list.Len() == 0
 }
@@ -217,7 +219,7 @@ func (d *BlockingDequeue[T]) IsEmpty() bool {
 	return d.isEmpty_unsafe()
 }
 
-// Return true if the dequeue is full without acquiring any locks.
+// Return true if the dequeue is full, without acquiring any locks.
 func (d *BlockingDequeue[T]) isFull_unsafe() bool {
 	return d.capacity > 0 && d.list.Len() == d.capacity
 }
