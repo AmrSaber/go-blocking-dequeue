@@ -8,8 +8,12 @@ import (
 
 // Tests that when inserting items concurrently, each item is inserted once and only once.
 func TestSyncedPushes(t *testing.T) {
-	values := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-	results := make([]int, 0, 10)
+	values := make([]int, 0)
+	for i := 1; i <= 1000; i++ {
+		values = append(values, i)
+	}
+
+	results := make([]int, 0, len(values))
 
 	dequeue := NewBlockingDequeue[int]()
 	wg := sync.WaitGroup{}
@@ -18,7 +22,7 @@ func TestSyncedPushes(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for i := 0; i < len(values); i++ {
+		for i := 0; i < 2*len(values); i++ {
 			results = append(results, dequeue.PopBack())
 		}
 	}()
@@ -29,32 +33,32 @@ func TestSyncedPushes(t *testing.T) {
 		go func(v int) {
 			defer wg.Done()
 			dequeue.PushBack(v)
+			dequeue.PushFront(v)
 		}(value)
 	}
 
 	wg.Wait()
 
 	// Make sure that all the number from values are in results
-	for _, value := range values {
-		found := false
+	times := make(map[int]int)
+	for _, value := range results {
+		times[value]++
+	}
 
-		for _, result := range results {
-			if result == value {
-				found = true
-				break
-			}
-		}
-
-		if !found {
-			t.Errorf("Expected %d to be in results", value)
+	for value, count := range times {
+		if count != 2 {
+			t.Errorf("Expected %d to be in results twice, got %d", value, count)
 		}
 	}
 }
 
 // Test that when reading items concurrently, each item is read once and only once.
 func TestSyncedPops(t *testing.T) {
-	values := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-	results := make([]int, 0, 10)
+	values := []int{}
+	for i := 1; i <= 1000; i++ {
+		values = append(values, i)
+	}
+	results := make([]int, 0, len(values))
 
 	dequeue := NewBlockingDequeue[int]()
 	wg := sync.WaitGroup{}
@@ -62,6 +66,7 @@ func TestSyncedPops(t *testing.T) {
 
 	// Insert the values
 	for _, value := range values {
+		dequeue.PushBack(value)
 		dequeue.PushBack(value)
 	}
 
@@ -71,41 +76,41 @@ func TestSyncedPops(t *testing.T) {
 		go func() {
 			defer wg.Done()
 
-			value := dequeue.PopFront()
+			v1 := dequeue.PopFront()
+			v2 := dequeue.PopBack()
 
 			// This only locks the results slice so PopFront is being tested correctly
 			resultLock.Lock()
 			defer resultLock.Unlock()
 
-			results = append(results, value)
+			results = append(results, v1, v2)
 		}()
 	}
 
 	wg.Wait()
 
 	// Make sure that all the number from values are in results
-	for _, value := range values {
-		found := false
+	times := make(map[int]int)
+	for _, value := range results {
+		times[value]++
+	}
 
-		for _, result := range results {
-			if result == value {
-				found = true
-				break
-			}
-		}
-
-		if !found {
-			t.Errorf("Expected %d to be in results", value)
+	for value, count := range times {
+		if count != 2 {
+			t.Errorf("Expected %d to be in results twice, got %d", value, count)
 		}
 	}
 }
 
 // Test that when capacity is increased, blocking producers are freed up.
 func TestCapacityChange(t *testing.T) {
-	values := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+	values := make([]int, 0)
+	for i := 1; i <= 1000; i++ {
+		values = append(values, i)
+	}
 
 	dequeue := NewBlockingDequeue[int]()
-	dequeue.SetCapacity(5)
+	dequeue.SetCapacity(100)
 	wg := sync.WaitGroup{}
 
 	// Insert the values concurrently
@@ -120,13 +125,12 @@ func TestCapacityChange(t *testing.T) {
 	// Sleep to allow all the goroutines to execute
 	time.Sleep(100 * time.Millisecond)
 
-	// Make sure that only 5 items are in the dequeue
-	if dequeue.Size() != 5 {
-		t.Errorf("Expected dequeue to have 5 items, got %d", dequeue.Size())
+	if dequeue.Size() != dequeue.Capacity() {
+		t.Errorf("Expected dequeue to have %d items, got %d", dequeue.Capacity(), dequeue.Size())
 	}
 
-	// Update the capacity to 10
-	err := dequeue.SetCapacity(0)
+	// Update the capacity
+	err := dequeue.SetCapacity(len(values))
 	if err != nil {
 		t.Errorf("Expected no error, got %s", err)
 	}
@@ -135,6 +139,6 @@ func TestCapacityChange(t *testing.T) {
 
 	// Make sure that all the number from values are in the dequeue
 	if dequeue.Size() != len(values) {
-		t.Errorf("Expected dequeue to have 10 items, got %d", dequeue.Size())
+		t.Errorf("Expected dequeue to have %d items, got %d", len(values), dequeue.Size())
 	}
 }
