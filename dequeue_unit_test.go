@@ -369,3 +369,51 @@ func TestBlockingPeekBack(t *testing.T) {
 		t.Errorf("Expected 1, got %d", dequeue.list.Back().Value.(int))
 	}
 }
+
+func TestOnEmpty(t *testing.T) {
+	dequeue := NewBlockingDequeue[int]()
+
+	called := 0
+	dequeue.OnEmpty = func() {
+		called++
+	}
+
+	dequeue.PushBack(1)
+	dequeue.PopFront()
+
+	if called != 1 {
+		t.Errorf("Expected 1, got %d", called)
+	}
+
+	dequeue.PushBack(2)
+	dequeue.PopFront()
+
+	if called != 2 {
+		t.Errorf("Expected 2, got %d", called)
+	}
+}
+
+func TestOnFull(t *testing.T) {
+	dequeue := NewBlockingDequeue[int]()
+	dequeue.SetCapacity(3)
+
+	called := 0
+	dequeue.OnFull = func() {
+		called++
+	}
+
+	dequeue.PushBack(1)
+	dequeue.PushBack(2)
+	dequeue.PushBack(3)
+
+	if called != 1 {
+		t.Errorf("Expected 1, got %d", called)
+	}
+
+	dequeue.PopFront()
+	dequeue.PushFront(0)
+
+	if called != 2 {
+		t.Errorf("Expected 2, got %d", called)
+	}
+}
