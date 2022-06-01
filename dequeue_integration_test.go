@@ -235,3 +235,54 @@ func TestConcurrentCapacityChange(t *testing.T) {
 
 	// No checks need to be done, if the test is here without race conditions, it passed
 }
+
+func TestConcurrentUpdatesToOnEmptyListener(t *testing.T) {
+	dequeue := NewBlockingDequeue[int]()
+
+	getDummyCallback := func() func() { return func() {} }
+
+	// Update onEmpty callback while it's being called
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		for i := 0; i < 100; i++ {
+			dequeue.SetOnEmpty(getDummyCallback())
+		}
+	}()
+
+	// Update the dequeue to call the onEmpty callback
+	for i := 0; i < 100; i++ {
+		go func(val int) {
+			dequeue.PushBack(val)
+			dequeue.PopBack()
+
+			dequeue.PushFront(val)
+			dequeue.PopFront()
+		}(i)
+	}
+}
+
+func TestConcurrentUpdatesToOnFullListener(t *testing.T) {
+	dequeue := NewBlockingDequeue[int]()
+	dequeue.SetCapacity(1)
+
+	getDummyCallback := func() func() { return func() {} }
+
+	// Update onEmpty callback while it's being called
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		for i := 0; i < 100; i++ {
+			dequeue.SetOnFull(getDummyCallback())
+		}
+	}()
+
+	// Update the dequeue to call the onEmpty callback
+	for i := 0; i < 100; i++ {
+		go func(val int) {
+			dequeue.PushBack(val)
+			dequeue.PopBack()
+
+			dequeue.PushFront(val)
+			dequeue.PopFront()
+		}(i)
+	}
+}

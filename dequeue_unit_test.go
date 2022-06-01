@@ -386,9 +386,9 @@ func TestOnEmpty(t *testing.T) {
 	dequeue := NewBlockingDequeue[int]()
 
 	called := 0
-	dequeue.OnEmpty = func() {
+	dequeue.SetOnEmpty(func() {
 		called++
-	}
+	})
 
 	dequeue.PushBack(1)
 	dequeue.PopFront()
@@ -410,9 +410,9 @@ func TestOnFull(t *testing.T) {
 	dequeue.SetCapacity(3)
 
 	called := 0
-	dequeue.OnFull = func() {
+	dequeue.SetOnFull(func() {
 		called++
-	}
+	})
 
 	dequeue.PushBack(1)
 	dequeue.PushBack(2)

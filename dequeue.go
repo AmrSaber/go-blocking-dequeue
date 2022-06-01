@@ -14,11 +14,13 @@ type BlockingDequeue[T any] struct {
 
 	writeCond    *sync.Cond    // condition used to lock and notify about writing to the encapsulated list
 	capacityLock *sync.RWMutex // lock used to protect the capacity
+	onFullLock   *sync.RWMutex // lock used to protect the onFull callback
+	onEmptyLock  *sync.RWMutex // lock used to protect the onEmpty callback
 
 	capacity int
 
-	OnFull  func() // Optional callback function invoked when the dequeue is full
-	OnEmpty func() // Optional callback function invoked when the dequeue is empty
+	onFull  func() // Optional callback function invoked when the dequeue is full
+	onEmpty func() // Optional callback function invoked when the dequeue is empty
 }
 
 // Creates a new blocking dequeue with infinite capacity.
@@ -26,8 +28,13 @@ type BlockingDequeue[T any] struct {
 func NewBlockingDequeue[T any]() *BlockingDequeue[T] {
 	d := new(BlockingDequeue[T])
 	d.list = list.New()
+
 	d.writeCond = sync.NewCond(&sync.Mutex{})
+
 	d.capacityLock = &sync.RWMutex{}
+	d.onFullLock = &sync.RWMutex{}
+	d.onEmptyLock = &sync.RWMutex{}
+
 	return d
 }
 
@@ -47,9 +54,12 @@ func (d *BlockingDequeue[T]) PushFront(item T) {
 	// Notify the consumer that an item has been added
 	defer d.writeCond.Broadcast()
 
+	d.onFullLock.RLock()
+	defer d.onFullLock.RUnlock()
+
 	// Call the OnFull callback if the dequeue is full
-	if d.isFull_unsafe() && d.OnFull != nil {
-		d.OnFull()
+	if d.isFull_unsafe() && d.onFull != nil {
+		d.onFull()
 	}
 }
 
@@ -68,8 +78,11 @@ func (d *BlockingDequeue[T]) PushBack(item T) {
 	defer d.writeCond.Broadcast()
 
 	// Call the OnFull callback if the dequeue is full
-	if d.isFull_unsafe() && d.OnFull != nil {
-		d.OnFull()
+	d.onFullLock.RLock()
+	defer d.onFullLock.RUnlock()
+
+	if d.isFull_unsafe() && d.onFull != nil {
+		d.onFull()
 	}
 }
 
@@ -88,8 +101,11 @@ func (d *BlockingDequeue[T]) PopFront() T {
 	defer d.writeCond.Broadcast()
 
 	// Call the OnEmpty callback if the dequeue is empty
-	if d.isEmpty_unsafe() && d.OnEmpty != nil {
-		d.OnEmpty()
+	d.onEmptyLock.RLock()
+	defer d.onEmptyLock.RUnlock()
+
+	if d.isEmpty_unsafe() && d.onEmpty != nil {
+		d.onEmpty()
 	}
 
 	return item
@@ -110,8 +126,11 @@ func (d *BlockingDequeue[T]) PopBack() T {
 	defer d.writeCond.Broadcast()
 
 	// Call the OnEmpty callback if the dequeue is empty
-	if d.isEmpty_unsafe() && d.OnEmpty != nil {
-		d.OnEmpty()
+	d.onEmptyLock.RLock()
+	defer d.onEmptyLock.RUnlock()
+
+	if d.isEmpty_unsafe() && d.onEmpty != nil {
+		d.onEmpty()
 	}
 
 	return item
@@ -141,6 +160,26 @@ func (d *BlockingDequeue[T]) PeekBack() T {
 
 	element := d.list.Back()
 	return element.Value.(T)
+}
+
+// ================================[Listeners related]================================
+
+// Set the callback function invoked when the dequeue is full.
+// Attempting to update the dequeue in the callback function will cause a deadlock.
+func (d *BlockingDequeue[T]) SetOnFull(onFull func()) {
+	d.onFullLock.Lock()
+	defer d.onFullLock.Unlock()
+
+	d.onFull = onFull
+}
+
+// Set the callback function invoked when the dequeue is empty.
+// Attempting to update the dequeue in the callback function will cause a deadlock.
+func (d *BlockingDequeue[T]) SetOnEmpty(onEmpty func()) {
+	d.onEmptyLock.Lock()
+	defer d.onEmptyLock.Unlock()
+
+	d.onEmpty = onEmpty
 }
 
 // ================================[Size/Capacity related]================================
