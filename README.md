@@ -141,7 +141,7 @@ It also supports setting the listeners (see example above):
 - `SetOnEmpty`
 - `SetOnFull`
 
-The detailed documentation can be found at the related [go packages page](https://pkg.go.dev/github.com/AmrSaber/go-blocking-dequeue).
+The detailed documentation can be found at the related [go packages page](https://pkg.go.dev/github.com/AmrSaber/go-blocking-dequeue#section-documentation).
 
 ## Limitations and Drawbacks
 
