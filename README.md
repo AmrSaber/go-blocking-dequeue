@@ -101,27 +101,27 @@ dq.PopFront() // Pops from the top, returns 1
 
 ### Listeners
 
-You can attach the listeners `OnEmpty` and `OnFull` to be invoked when the dequeue is empty or full respectively
+You can attach listeners `onEmpty` and `onFull` to be invoked when the dequeue is empty or full respectively
 
 ```go
 dq := blocking_dequeue.NewBlockingDequeue[int]()
 
-dq.IsEmpty = func() {
+dq.SetOnEmpty(func() {
   fmt.Println("Dequeue is now empty")
-}
+})
 
 dq.PushBack(1)
-dq.PopFront() // "Dequeue is now empty" is printed as IsEmpty listener is invoked
+dq.PopFront() // "Dequeue is now empty" is printed as onEmpty listener is invoked
 
 // Dequeue can only be full if it has a positive capacity
 dq.SetCapacity(2)
 
-dq.IsFull = func() {
+dq.SetOnFull(func() {
   fmt.Println("Dequeue is now full")
-}
+})
 
 dq.PushBack(1)
-dq.PushBack(2) // "Dequeue is now full" is printed as IsFull listener is invoked
+dq.PushBack(2) // "Dequeue is now full" is printed as onFull listener is invoked
 ```
 
 ## API Documentation
@@ -136,10 +136,10 @@ The dequeue itself exposes the following methods:
 - `Capacity`, `SetCapacity`, `IsFull`
 - `Size`, `IsEmpty`
 
-It also supports the listeners (see example above):
+It also supports setting the listeners (see example above):
 
-- `IsEmpty`
-- `IsFull`
+- `SetOnEmpty`
+- `SetOnFull`
 
 The detailed documentation can be found at the related [go packages page](https://pkg.go.dev/github.com/AmrSaber/go-blocking-dequeue).
 
@@ -174,7 +174,7 @@ ch <- 1
 <- ch
 ```
 
-That is unless you need access the other provided methods and listeners, such as `Peek` variations, `Size`, `IsFull`, `OnEmpty`, `OnFull`, and so on...
+That is unless you need access the other provided methods and listeners, such as `Peek` variations, `Size`, `IsFull`, `onEmpty`, `onFull`, and so on...
 
 ## Benchmarking
 
