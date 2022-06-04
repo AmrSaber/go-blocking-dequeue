@@ -99,31 +99,6 @@ dq.PopFront() // Pops from the top, returns 2
 dq.PopFront() // Pops from the top, returns 1
 ```
 
-### Listeners
-
-You can attach listeners `onEmpty` and `onFull` to be invoked when the dequeue is empty or full respectively
-
-```go
-dq := blocking_dequeue.NewBlockingDequeue[int]()
-
-dq.SetOnEmpty(func() {
-  fmt.Println("Dequeue is now empty")
-})
-
-dq.PushBack(1)
-dq.PopFront() // "Dequeue is now empty" is printed as onEmpty listener is invoked
-
-// Dequeue can only be full if it has a positive capacity
-dq.SetCapacity(2)
-
-dq.SetOnFull(func() {
-  fmt.Println("Dequeue is now full")
-})
-
-dq.PushBack(1)
-dq.PushBack(2) // "Dequeue is now full" is printed as onFull listener is invoked
-```
-
 ## API Documentation
 
 The package itself exposes 1 function `NewBlockingQueue` that is used to create a new dequeue and return a pointer to it.
@@ -135,11 +110,6 @@ The dequeue itself exposes the following methods:
 - `PeekFront`, `PeekBack`
 - `Capacity`, `SetCapacity`, `IsFull`
 - `Size`, `IsEmpty`
-
-It also supports setting the listeners (see example above):
-
-- `SetOnEmpty`
-- `SetOnFull`
 
 The detailed documentation can be found at the related [go packages page](https://pkg.go.dev/github.com/AmrSaber/go-blocking-dequeue#section-documentation).
 
@@ -174,7 +144,7 @@ ch <- 1
 <- ch
 ```
 
-That is unless you need access the other provided methods and listeners, such as `Peek` variations, `Size`, `IsFull`, `onEmpty`, `onFull`, and so on...
+That is unless you need access the other provided methods, such as `Peek` variations, `Size`, `IsFull`, and so on...
 
 ## Benchmarking
 
