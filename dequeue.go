@@ -7,8 +7,6 @@ import (
 )
 
 // TODO:
-//	1. Remove the listeners
-//  2. Use same lock for everything
 // 	3. In the constructor, accept a mandatory slice for the buffer
 // 	4. Update the used technique to use circular buffer
 
@@ -18,8 +16,9 @@ import (
 type BlockingDequeue[T any] struct {
 	list *list.List
 
-	writeCond    *sync.Cond    // condition used to lock and notify about writing to the encapsulated list
-	capacityLock *sync.RWMutex // lock used to protect the capacity
+	lock     *sync.Mutex
+	notEmpty *sync.Cond // Signalled when the queue is not empty
+	notFull  *sync.Cond // Signalled when the queue is not full
 
 	capacity int
 }
@@ -30,9 +29,10 @@ func NewBlockingDequeue[T any]() *BlockingDequeue[T] {
 	d := new(BlockingDequeue[T])
 	d.list = list.New()
 
-	d.writeCond = sync.NewCond(&sync.Mutex{})
+	d.lock = &sync.Mutex{}
+	d.notEmpty = sync.NewCond(d.lock)
+	d.notFull = sync.NewCond(d.lock)
 
-	d.capacityLock = &sync.RWMutex{}
 	return d
 }
 
@@ -40,13 +40,13 @@ func NewBlockingDequeue[T any]() *BlockingDequeue[T] {
 
 // Add an item into the front (top) of the dequeue. Blocks if dequeue is full.
 func (d *BlockingDequeue[T]) PushFront(item T) {
-	// If the dequeue is full, wait until an item is removed
-	d.writeCond.L.Lock()
-	defer d.writeCond.L.Unlock()
-	defer d.writeCond.Signal()
+	d.lock.Lock()
+	defer d.lock.Unlock()
+	defer d.notEmpty.Signal()
 
+	// If the dequeue is full, wait until an item is removed
 	for d.isFull_unsafe() {
-		d.writeCond.Wait()
+		d.notFull.Wait()
 	}
 
 	d.list.PushFront(item)
@@ -54,13 +54,13 @@ func (d *BlockingDequeue[T]) PushFront(item T) {
 
 // Add an item to the back (bottom) of the dequeue. Blocks if dequeue is full.
 func (d *BlockingDequeue[T]) PushBack(item T) {
-	// If the dequeue is full, wait until an item is removed
-	d.writeCond.L.Lock()
-	defer d.writeCond.L.Unlock()
-	defer d.writeCond.Broadcast()
+	d.lock.Lock()
+	defer d.lock.Unlock()
+	defer d.notEmpty.Signal()
 
+	// If the dequeue is full, wait until an item is removed
 	for d.isFull_unsafe() {
-		d.writeCond.Wait()
+		d.notFull.Wait()
 	}
 
 	d.list.PushBack(item)
@@ -68,13 +68,13 @@ func (d *BlockingDequeue[T]) PushBack(item T) {
 
 // Read the first item (on the top/front) of the dequeue and remove it. Blocks if the dequeue is empty.
 func (d *BlockingDequeue[T]) PopFront() T {
-	// If the dequeue is empty, wait until an item is added
-	d.writeCond.L.Lock()
-	defer d.writeCond.L.Unlock()
-	defer d.writeCond.Signal()
+	d.lock.Lock()
+	defer d.lock.Unlock()
+	defer d.notFull.Signal()
 
+	// If the dequeue is empty, wait until an item is added
 	for d.isEmpty_unsafe() {
-		d.writeCond.Wait()
+		d.notEmpty.Wait()
 	}
 
 	item := d.list.Remove(d.list.Front()).(T)
@@ -84,13 +84,13 @@ func (d *BlockingDequeue[T]) PopFront() T {
 
 // Read the last item (at the end/back) of the dequeue and remove it. Blocks if the dequeue is empty.
 func (d *BlockingDequeue[T]) PopBack() T {
-	// If the dequeue is empty, wait until an item is added
-	d.writeCond.L.Lock()
-	defer d.writeCond.L.Unlock()
-	defer d.writeCond.Signal()
+	d.lock.Lock()
+	defer d.lock.Unlock()
+	defer d.notFull.Signal()
 
+	// If the dequeue is empty, wait until an item is added
 	for d.isEmpty_unsafe() {
-		d.writeCond.Wait()
+		d.notEmpty.Wait()
 	}
 
 	item := d.list.Remove(d.list.Back()).(T)
@@ -100,11 +100,12 @@ func (d *BlockingDequeue[T]) PopBack() T {
 
 // Read the first item of the dequeue without removing it. Blocks if the dequeue is empty.
 func (d *BlockingDequeue[T]) PeekFront() T {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
 	// If the dequeue is empty, wait until an item is added
-	d.writeCond.L.Lock()
-	defer d.writeCond.L.Unlock()
 	for d.isEmpty_unsafe() {
-		d.writeCond.Wait()
+		d.notEmpty.Wait()
 	}
 
 	element := d.list.Front()
@@ -113,11 +114,12 @@ func (d *BlockingDequeue[T]) PeekFront() T {
 
 // Read the last item of the dequeue without removing it. Blocks if the dequeue is empty.
 func (d *BlockingDequeue[T]) PeekBack() T {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
 	// If the dequeue is empty, wait until an item is added
-	d.writeCond.L.Lock()
-	defer d.writeCond.L.Unlock()
 	for d.isEmpty_unsafe() {
-		d.writeCond.Wait()
+		d.notEmpty.Wait()
 	}
 
 	element := d.list.Back()
@@ -134,37 +136,33 @@ func (d *BlockingDequeue[T]) SetCapacity(capacity int) error {
 		return fmt.Errorf("capacity must be >= 0")
 	}
 
-	d.writeCond.L.Lock()
-	defer d.writeCond.L.Unlock()
+	d.lock.Lock()
+	defer d.lock.Unlock()
 
 	if capacity > 0 && capacity < d.list.Len() {
 		return fmt.Errorf("capacity (%d) must be >= the current size (%d), or 0 for infinite capacity", capacity, d.list.Len())
 	}
 
-	// Acquire capacity lock before trying to update it
-	d.capacityLock.Lock()
-	defer d.capacityLock.Unlock()
-
 	d.capacity = capacity
 
 	// Notify any blocked producer now that the capacity has changed (potentially increased)
-	d.writeCond.Broadcast()
+	d.notFull.Broadcast()
 
 	return nil
 }
 
 // Get current capacity of the dequeue.
 func (d *BlockingDequeue[T]) Capacity() int {
-	d.capacityLock.RLock()
-	defer d.capacityLock.RUnlock()
+	d.lock.Lock()
+	defer d.lock.Unlock()
 
 	return d.capacity
 }
 
 // Return the number of elements in the dequeue.
 func (d *BlockingDequeue[T]) Size() int {
-	d.writeCond.L.Lock()
-	defer d.writeCond.L.Unlock()
+	d.lock.Lock()
+	defer d.lock.Unlock()
 
 	return d.list.Len()
 }
@@ -176,8 +174,8 @@ func (d *BlockingDequeue[T]) isEmpty_unsafe() bool {
 
 // Return true if the dequeue is empty.
 func (d *BlockingDequeue[T]) IsEmpty() bool {
-	d.writeCond.L.Lock()
-	defer d.writeCond.L.Unlock()
+	d.lock.Lock()
+	defer d.lock.Unlock()
 
 	return d.isEmpty_unsafe()
 }
@@ -190,11 +188,8 @@ func (d *BlockingDequeue[T]) isFull_unsafe() bool {
 // Return true if the dequeue is full.
 // i.e. the dequeue has limited capacity and the current size is equal to that capacity.
 func (d *BlockingDequeue[T]) IsFull() bool {
-	d.writeCond.L.Lock()
-	defer d.writeCond.L.Unlock()
-
-	d.capacityLock.RLock()
-	defer d.capacityLock.RUnlock()
+	d.lock.Lock()
+	defer d.lock.Unlock()
 
 	return d.isFull_unsafe()
 }
