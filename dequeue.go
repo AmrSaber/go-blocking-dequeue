@@ -1,39 +1,46 @@
 package blocking_dequeue
 
 import (
-	"container/list"
-	"fmt"
 	"sync"
 )
 
-// TODO:
-// 	3. In the constructor, accept a mandatory slice for the buffer
-// 	4. Update the used technique to use circular buffer
-
-// Blocking dequeue, implemented with a linked list.
-// By default the dequeue has infinite capacity.
+// Blocking dequeue, implemented with a circular buffer.
 // The dequeue is thread safe. And must not be copied.
 type BlockingDequeue[T any] struct {
-	list *list.List
+	buffer []T
 
-	lock     *sync.Mutex
-	notEmpty *sync.Cond // Signalled when the queue is not empty
-	notFull  *sync.Cond // Signalled when the queue is not full
+	lock              *sync.Mutex
+	notEmpty, notFull *sync.Cond
 
-	capacity int
+	first, last int
+	isEmpty     bool
 }
 
 // Creates a new blocking dequeue with infinite capacity.
 // The dequeue MUST only be created using this method.
-func NewBlockingDequeue[T any]() *BlockingDequeue[T] {
+func NewBlockingDequeue[T any](buffer []T) *BlockingDequeue[T] {
 	d := new(BlockingDequeue[T])
-	d.list = list.New()
+
+	d.buffer = buffer
+
+	d.first = 0
+	d.last = len(buffer) - 1
+	d.isEmpty = true
 
 	d.lock = &sync.Mutex{}
 	d.notEmpty = sync.NewCond(d.lock)
 	d.notFull = sync.NewCond(d.lock)
 
 	return d
+}
+
+// =================================[Buffer helpers]=================================
+func (d BlockingDequeue[T]) nextIndex(i int) int {
+	return (i + 1) % len(d.buffer)
+}
+
+func (d BlockingDequeue[T]) prevIndex(i int) int {
+	return (i - 1 + len(d.buffer)) % len(d.buffer)
 }
 
 // =================================[Push/Pop/Peek]=================================
@@ -49,7 +56,12 @@ func (d *BlockingDequeue[T]) PushFront(item T) {
 		d.notFull.Wait()
 	}
 
-	d.list.PushFront(item)
+	if !d.isEmpty {
+		d.first = d.prevIndex(d.first)
+	}
+	d.buffer[d.first] = item
+
+	d.isEmpty = false
 }
 
 // Add an item to the back (bottom) of the dequeue. Blocks if dequeue is full.
@@ -63,7 +75,12 @@ func (d *BlockingDequeue[T]) PushBack(item T) {
 		d.notFull.Wait()
 	}
 
-	d.list.PushBack(item)
+	if !d.isEmpty {
+		d.last = d.nextIndex(d.last)
+	}
+	d.buffer[d.last] = item
+
+	d.isEmpty = false
 }
 
 // Read the first item (on the top/front) of the dequeue and remove it. Blocks if the dequeue is empty.
@@ -77,7 +94,13 @@ func (d *BlockingDequeue[T]) PopFront() T {
 		d.notEmpty.Wait()
 	}
 
-	item := d.list.Remove(d.list.Front()).(T)
+	item := d.buffer[d.first]
+
+	if d.first == d.last {
+		d.isEmpty = true
+	} else {
+		d.first = d.nextIndex(d.first)
+	}
 
 	return item
 }
@@ -93,7 +116,13 @@ func (d *BlockingDequeue[T]) PopBack() T {
 		d.notEmpty.Wait()
 	}
 
-	item := d.list.Remove(d.list.Back()).(T)
+	item := d.buffer[d.last]
+
+	if d.first == d.last {
+		d.isEmpty = true
+	} else {
+		d.last = d.prevIndex(d.last)
+	}
 
 	return item
 }
@@ -108,8 +137,7 @@ func (d *BlockingDequeue[T]) PeekFront() T {
 		d.notEmpty.Wait()
 	}
 
-	element := d.list.Front()
-	return element.Value.(T)
+	return d.buffer[d.first]
 }
 
 // Read the last item of the dequeue without removing it. Blocks if the dequeue is empty.
@@ -122,54 +150,29 @@ func (d *BlockingDequeue[T]) PeekBack() T {
 		d.notEmpty.Wait()
 	}
 
-	element := d.list.Back()
-	return element.Value.(T)
+	return d.buffer[d.last]
 }
 
 // ================================[Size/Capacity related]================================
-
-// Set dequeue capacity, if capacity is 0, dequeue is infinite.
-// Capacity must also be greater than the current dequeue size.
-// If an invalid capacity is sent, an error is returned and the dequeue capacity is not changed.
-func (d *BlockingDequeue[T]) SetCapacity(capacity int) error {
-	if capacity < 0 {
-		return fmt.Errorf("capacity must be >= 0")
-	}
-
-	d.lock.Lock()
-	defer d.lock.Unlock()
-
-	if capacity > 0 && capacity < d.list.Len() {
-		return fmt.Errorf("capacity (%d) must be >= the current size (%d), or 0 for infinite capacity", capacity, d.list.Len())
-	}
-
-	d.capacity = capacity
-
-	// Notify any blocked producer now that the capacity has changed (potentially increased)
-	d.notFull.Broadcast()
-
-	return nil
-}
-
-// Get current capacity of the dequeue.
-func (d *BlockingDequeue[T]) Capacity() int {
-	d.lock.Lock()
-	defer d.lock.Unlock()
-
-	return d.capacity
-}
-
 // Return the number of elements in the dequeue.
 func (d *BlockingDequeue[T]) Size() int {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
-	return d.list.Len()
+	if d.isEmpty {
+		return 0
+	}
+	if d.first <= d.last {
+		return d.last - d.first + 1
+	} else {
+		return (len(d.buffer) - d.first) + (d.last + 1)
+	}
 }
 
 // Return true if the dequeue is empty, without acquiring any locks.
+// Dequeue is empty if the first and last indices are the same.
 func (d *BlockingDequeue[T]) isEmpty_unsafe() bool {
-	return d.list.Len() == 0
+	return d.isEmpty
 }
 
 // Return true if the dequeue is empty.
@@ -181,8 +184,9 @@ func (d *BlockingDequeue[T]) IsEmpty() bool {
 }
 
 // Return true if the dequeue is full, without acquiring any locks.
+// Dequeue is full if the next item to be added will be the first item in the dequeue.
 func (d *BlockingDequeue[T]) isFull_unsafe() bool {
-	return d.capacity > 0 && d.list.Len() == d.capacity
+	return d.nextIndex(d.last) == d.first
 }
 
 // Return true if the dequeue is full.
