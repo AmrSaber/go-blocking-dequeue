@@ -24,7 +24,7 @@ func NewBlockingDequeue[T any](buffer []T) *BlockingDequeue[T] {
 	d.buffer = buffer
 
 	d.first = 0
-	d.last = len(buffer) - 1
+	d.last = 0
 	d.isEmpty = true
 
 	d.lock = &sync.Mutex{}
