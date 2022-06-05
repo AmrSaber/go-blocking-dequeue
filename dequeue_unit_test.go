@@ -9,155 +9,161 @@ import (
 // One rule for testing: Only what's been tested already can be used as a part of a later test
 
 func TestSize(t *testing.T) {
-	dequeue := NewBlockingDequeue[int]()
+	buffer := make([]int, 5)
+	dequeue := NewBlockingDequeue(buffer)
 
-	// Access the list directly, as PushFront() is not tested yet
-	dequeue.list.PushFront(1)
-	dequeue.list.PushFront(2)
-	dequeue.list.PushFront(3)
+	dequeue.isEmpty = false
+
+	// * * * . . => size = 3
+	dequeue.first = 0
+	dequeue.last = 2
 
 	if dequeue.Size() != 3 {
 		t.Errorf("Expected 3, got %d", dequeue.Size())
 	}
-}
 
-func TestCapacity(t *testing.T) {
-	dequeue := NewBlockingDequeue[int]()
+	// * . * * * => size = 4
+	dequeue.first = 2
+	dequeue.last = 0
 
-	// Test that Capacity() returns the actual capacity
-	dequeue.capacity = 2
-	if dequeue.Capacity() != 2 {
-		t.Errorf("Expected 3, got %d", dequeue.Capacity())
+	if dequeue.Size() != 4 {
+		t.Errorf("Expected 4, got %d", dequeue.Size())
 	}
 
-	// Test that SetCapacity() sets the capacity
-	dequeue.SetCapacity(4)
-	if dequeue.capacity != 4 {
-		t.Errorf("Expected 4, got %d", dequeue.Capacity())
+	// . * * * . => size = 3
+	dequeue.first = 1
+	dequeue.last = 3
+
+	if dequeue.Size() != 3 {
+		t.Errorf("Expected 3, got %d", dequeue.Size())
 	}
+
+	// * . . . * => size = 2
+	dequeue.first = 4
+	dequeue.last = 0
+
+	if dequeue.Size() != 2 {
+		t.Errorf("Expected 2, got %d", dequeue.Size())
+	}
+
 }
 
 func TestIsEmpty(t *testing.T) {
-	dequeue := NewBlockingDequeue[int]()
+	dequeue := NewBlockingDequeue(make([]int, 5))
 
 	if !dequeue.IsEmpty() {
 		t.Errorf("Expected true, got %t", dequeue.IsEmpty())
 	}
+}
 
-	dequeue.list.PushFront(1)
-	if dequeue.IsEmpty() {
-		t.Errorf("Expected false, got %t", dequeue.IsEmpty())
+func TestPushFront(t *testing.T) {
+	dequeue := NewBlockingDequeue(make([]int, 5))
+	dequeue.PushFront(1)
+	dequeue.PushFront(2)
+	dequeue.PushFront(3)
+
+	if dequeue.buffer[dequeue.first] != 3 {
+		t.Errorf("Expected 3, got %d", dequeue.buffer[0])
+	}
+
+	if dequeue.buffer[dequeue.last] != 1 {
+		t.Errorf("Expected 1, got %d", dequeue.buffer[0])
 	}
 }
 
 func TestIsFull(t *testing.T) {
-	dequeue := NewBlockingDequeue[int]()
+	dequeue := NewBlockingDequeue(make([]int, 5))
 
-	dequeue.capacity = 2
-	dequeue.list.PushFront(1)
-	dequeue.list.PushFront(2)
+	for i := 0; i < 5; i++ {
+		dequeue.PushBack(i)
+	}
 
 	if !dequeue.IsFull() {
 		t.Errorf("Expected true, got %t", dequeue.IsFull())
 	}
 }
 
-func TestPushFront(t *testing.T) {
-	dequeue := NewBlockingDequeue[int]()
+func TestBlockingPushFront(t *testing.T) {
+	dequeue := NewBlockingDequeue(make([]int, 2))
 	dequeue.PushFront(1)
 	dequeue.PushFront(2)
-	dequeue.PushFront(3)
-
-	if dequeue.list.Front().Value.(int) != 3 {
-		t.Errorf("Expected 3, got %d", dequeue.list.Front().Value.(int))
-	}
-
-	if dequeue.list.Back().Value.(int) != 1 {
-		t.Errorf("Expected 1, got %d", dequeue.list.Back().Value.(int))
-	}
-}
-
-func TestBlockingPushFront(t *testing.T) {
-	dequeue := NewBlockingDequeue[int]()
-	dequeue.SetCapacity(1)
-	dequeue.PushFront(1)
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
 	go func() {
 		defer wg.Done()
-		dequeue.PushFront(2)
+		dequeue.PushFront(3)
 	}()
 
 	// Sleep to make sure that the above goroutine is started and blocked
 	time.Sleep(100 * time.Millisecond)
 
-	if dequeue.list.Front().Value.(int) != 1 {
-		t.Errorf("Expected 1, got %d", dequeue.list.Front().Value.(int))
+	if dequeue.buffer[dequeue.first] != 2 {
+		t.Errorf("Expected 2, got %d", dequeue.buffer[dequeue.first])
 	}
 
 	// Remove the element to empty the dequeue and unblock the goroutine
 	dequeue.lock.Lock()
-	dequeue.list.Remove(dequeue.list.Front())
+	dequeue.first = dequeue.nextIndex(dequeue.first)
 	dequeue.notFull.Signal()
 	dequeue.lock.Unlock()
 	wg.Wait()
 
-	if dequeue.list.Front().Value.(int) != 2 {
-		t.Errorf("Expected 2, got %d", dequeue.list.Front().Value.(int))
+	if dequeue.buffer[dequeue.first] != 3 {
+		t.Errorf("Expected 3, got %d", dequeue.buffer[dequeue.first])
 	}
 }
 
 func TestPushBack(t *testing.T) {
-	dequeue := NewBlockingDequeue[int]()
+	dequeue := NewBlockingDequeue(make([]int, 5))
 	dequeue.PushBack(1)
 	dequeue.PushBack(2)
 	dequeue.PushBack(3)
 
-	if dequeue.list.Front().Value.(int) != 1 {
-		t.Errorf("Expected 1, got %d", dequeue.list.Front().Value.(int))
+	if dequeue.buffer[dequeue.first] != 1 {
+		t.Errorf("Expected 1, got %d", dequeue.buffer[dequeue.first])
 	}
 
-	if dequeue.list.Back().Value.(int) != 3 {
-		t.Errorf("Expected 3, got %d", dequeue.list.Back().Value.(int))
+	if dequeue.buffer[dequeue.last] != 3 {
+		t.Errorf("Expected 3, got %d", dequeue.buffer[dequeue.last])
 	}
 }
 
 func TestBlockingPushBack(t *testing.T) {
-	dequeue := NewBlockingDequeue[int]()
-	dequeue.SetCapacity(1)
+	dequeue := NewBlockingDequeue(make([]int, 2))
 	dequeue.PushBack(1)
+	dequeue.PushBack(2)
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
 	go func() {
 		defer wg.Done()
-		dequeue.PushBack(2)
+		dequeue.PushBack(3)
 	}()
 
 	// Sleep to make sure that the above goroutine is started and blocked
 	time.Sleep(100 * time.Millisecond)
 
-	if dequeue.list.Back().Value.(int) != 1 {
-		t.Errorf("Expected 1, got %d", dequeue.list.Back().Value.(int))
+	if dequeue.buffer[dequeue.last] != 2 {
+		t.Errorf("Expected 2, got %d", dequeue.buffer[dequeue.last])
 	}
 
 	// Remove the element to empty the dequeue and unblock the goroutine
 	dequeue.lock.Lock()
-	dequeue.list.Remove(dequeue.list.Back())
+	dequeue.last = dequeue.prevIndex(dequeue.last)
 	dequeue.notFull.Signal()
 	dequeue.lock.Unlock()
 	wg.Wait()
 
-	if dequeue.list.Back().Value.(int) != 2 {
-		t.Errorf("Expected 2, got %d", dequeue.list.Back().Value.(int))
+	if dequeue.buffer[dequeue.last] != 3 {
+		t.Errorf("Expected 3, got %d", dequeue.buffer[dequeue.last])
 	}
 }
 
 func TestPopFront(t *testing.T) {
-	dequeue := NewBlockingDequeue[int]()
+	dequeue := NewBlockingDequeue(make([]int, 5))
 	dequeue.PushFront(1)
 	dequeue.PushFront(2)
 	dequeue.PushFront(3)
@@ -179,7 +185,7 @@ func TestPopFront(t *testing.T) {
 }
 
 func TestBlockingPopFront(t *testing.T) {
-	dequeue := NewBlockingDequeue[int]()
+	dequeue := NewBlockingDequeue(make([]int, 5))
 
 	value := -1
 	wg := sync.WaitGroup{}
@@ -198,10 +204,7 @@ func TestBlockingPopFront(t *testing.T) {
 	}
 
 	// Add element to empty the dequeue and unblock the goroutine
-	dequeue.lock.Lock()
-	dequeue.list.PushFront(1)
-	dequeue.notEmpty.Signal()
-	dequeue.lock.Unlock()
+	dequeue.PushFront(1)
 	wg.Wait()
 
 	if value != 1 {
@@ -210,7 +213,7 @@ func TestBlockingPopFront(t *testing.T) {
 }
 
 func TestPopBack(t *testing.T) {
-	dequeue := NewBlockingDequeue[int]()
+	dequeue := NewBlockingDequeue(make([]int, 5))
 	dequeue.PushBack(1)
 	dequeue.PushBack(2)
 	dequeue.PushBack(3)
@@ -232,7 +235,7 @@ func TestPopBack(t *testing.T) {
 }
 
 func TestBlockingPopBack(t *testing.T) {
-	dequeue := NewBlockingDequeue[int]()
+	dequeue := NewBlockingDequeue(make([]int, 5))
 
 	value := -1
 	wg := sync.WaitGroup{}
@@ -251,10 +254,7 @@ func TestBlockingPopBack(t *testing.T) {
 	}
 
 	// Add element to empty the dequeue and unblock the goroutine
-	dequeue.lock.Lock()
-	dequeue.list.PushFront(1)
-	dequeue.notEmpty.Signal()
-	dequeue.lock.Unlock()
+	dequeue.PushFront(1)
 	wg.Wait()
 
 	if value != 1 {
@@ -263,7 +263,7 @@ func TestBlockingPopBack(t *testing.T) {
 }
 
 func TestPeekFront(t *testing.T) {
-	dequeue := NewBlockingDequeue[int]()
+	dequeue := NewBlockingDequeue(make([]int, 5))
 	dequeue.PushFront(1)
 	dequeue.PushFront(2)
 	dequeue.PushFront(3)
@@ -277,14 +277,10 @@ func TestPeekFront(t *testing.T) {
 	if value != 3 {
 		t.Errorf("Expected 3, got %d", value)
 	}
-
-	if dequeue.Size() != 3 {
-		t.Errorf("Expected size 3, got %d", dequeue.Size())
-	}
 }
 
 func TestBlockingPeekFront(t *testing.T) {
-	dequeue := NewBlockingDequeue[int]()
+	dequeue := NewBlockingDequeue(make([]int, 5))
 
 	value := -1
 	wg := sync.WaitGroup{}
@@ -303,10 +299,7 @@ func TestBlockingPeekFront(t *testing.T) {
 	}
 
 	// Add element to empty the dequeue and unblock the goroutine
-	dequeue.lock.Lock()
-	dequeue.list.PushFront(1)
-	dequeue.notEmpty.Signal()
-	dequeue.lock.Unlock()
+	dequeue.PushFront(1)
 	wg.Wait()
 
 	if value != 1 {
@@ -317,13 +310,13 @@ func TestBlockingPeekFront(t *testing.T) {
 		t.Errorf("Expected size 1, got %d", dequeue.Size())
 	}
 
-	if dequeue.list.Front().Value.(int) != 1 {
-		t.Errorf("Expected 1, got %d", dequeue.list.Front().Value.(int))
+	if dequeue.buffer[dequeue.first] != 1 {
+		t.Errorf("Expected 1, got %d", dequeue.buffer[dequeue.first])
 	}
 }
 
 func TestPeekBack(t *testing.T) {
-	dequeue := NewBlockingDequeue[int]()
+	dequeue := NewBlockingDequeue(make([]int, 5))
 	dequeue.PushBack(1)
 	dequeue.PushBack(2)
 	dequeue.PushBack(3)
@@ -344,7 +337,7 @@ func TestPeekBack(t *testing.T) {
 }
 
 func TestBlockingPeekBack(t *testing.T) {
-	dequeue := NewBlockingDequeue[int]()
+	dequeue := NewBlockingDequeue(make([]int, 5))
 
 	value := -1
 	wg := sync.WaitGroup{}
@@ -363,10 +356,7 @@ func TestBlockingPeekBack(t *testing.T) {
 	}
 
 	// Add element to empty the dequeue and unblock the goroutine
-	dequeue.lock.Lock()
-	dequeue.list.PushFront(1)
-	dequeue.notEmpty.Signal()
-	dequeue.lock.Unlock()
+	dequeue.PushFront(1)
 	wg.Wait()
 
 	if value != 1 {
@@ -377,7 +367,23 @@ func TestBlockingPeekBack(t *testing.T) {
 		t.Errorf("Expected size 1, got %d", dequeue.Size())
 	}
 
-	if dequeue.list.Back().Value.(int) != 1 {
-		t.Errorf("Expected 1, got %d", dequeue.list.Back().Value.(int))
+	if dequeue.buffer[dequeue.last] != 1 {
+		t.Errorf("Expected 1, got %d", dequeue.buffer[dequeue.last])
+	}
+}
+
+func TestIsEmptyAfterUpdates(t *testing.T) {
+	dequeue := NewBlockingDequeue(make([]int, 5))
+
+	dequeue.PushFront(1)
+
+	if dequeue.IsEmpty() {
+		t.Errorf("Expected false, got true")
+	}
+
+	dequeue.PopFront()
+
+	if !dequeue.IsEmpty() {
+		t.Errorf("Expected true, got false")
 	}
 }

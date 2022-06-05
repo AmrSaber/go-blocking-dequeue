@@ -1,10 +1,8 @@
 package blocking_dequeue
 
 import (
-	"math/rand"
 	"sync"
 	"testing"
-	"time"
 )
 
 // Tests that when inserting items concurrently, each item is inserted once and only once.
@@ -16,7 +14,7 @@ func TestSyncedPushes(t *testing.T) {
 
 	results := make([]int, 0, len(values))
 
-	dequeue := NewBlockingDequeue[int]()
+	dequeue := NewBlockingDequeue(make([]int, 5))
 	wg := sync.WaitGroup{}
 
 	// Consume all values that are inserted into the dequeue concurrently
@@ -61,7 +59,7 @@ func TestSyncedPops(t *testing.T) {
 	}
 	results := make([]int, 0, len(values))
 
-	dequeue := NewBlockingDequeue[int]()
+	dequeue := NewBlockingDequeue(make([]int, 2000))
 	wg := sync.WaitGroup{}
 	resultLock := sync.Mutex{}
 
@@ -103,7 +101,7 @@ func TestSyncedPops(t *testing.T) {
 	}
 }
 
-// Test that when reading and writing items at the same time, no value is lost.
+// Test that when reading and writing items at the same time, no value is lost. And that a small buffer is sufficient.
 func TestSyncedMixedWrites(t *testing.T) {
 	values := []int{}
 	for i := 1; i <= 1000; i++ {
@@ -112,7 +110,7 @@ func TestSyncedMixedWrites(t *testing.T) {
 	results := make([]int, 0, len(values))
 	resultLock := sync.Mutex{}
 
-	dequeue := NewBlockingDequeue[int]()
+	dequeue := NewBlockingDequeue(make([]int, 10))
 	wg := sync.WaitGroup{}
 
 	// Concurrent producers
@@ -155,83 +153,4 @@ func TestSyncedMixedWrites(t *testing.T) {
 			t.Errorf("Expected %d to be in results twice, got %d", value, count)
 		}
 	}
-}
-
-// Test that when capacity is increased, blocking producers are freed up.
-func TestCapacityChange(t *testing.T) {
-	values := make([]int, 0)
-	for i := 1; i <= 1000; i++ {
-		values = append(values, i)
-	}
-
-	dequeue := NewBlockingDequeue[int]()
-	dequeue.SetCapacity(100)
-	wg := sync.WaitGroup{}
-
-	// Insert the values concurrently
-	for _, value := range values {
-		wg.Add(1)
-		go func(v int) {
-			defer wg.Done()
-			dequeue.PushBack(v)
-		}(value)
-	}
-
-	// Sleep to allow all the goroutines to execute
-	time.Sleep(100 * time.Millisecond)
-
-	if dequeue.Size() != dequeue.Capacity() {
-		t.Errorf("Expected dequeue to have %d items, got %d", dequeue.Capacity(), dequeue.Size())
-	}
-
-	// Update the capacity
-	err := dequeue.SetCapacity(len(values))
-	if err != nil {
-		t.Errorf("Expected no error, got %s", err)
-	}
-
-	wg.Wait()
-
-	// Make sure that all the number from values are in the dequeue
-	if dequeue.Size() != len(values) {
-		t.Errorf("Expected dequeue to have %d items, got %d", len(values), dequeue.Size())
-	}
-}
-
-// Test that no race condition happens due to capacity changes
-func TestConcurrentCapacityChange(t *testing.T) {
-	dequeue := NewBlockingDequeue[int]()
-	wg := sync.WaitGroup{}
-
-	// Read capacity concurrently
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			// Do random sleep
-			time.Sleep(time.Duration(rand.Int()) % 100 * time.Millisecond)
-
-			// Simulate reading the capacity
-			dequeue.Capacity()
-		}()
-	}
-
-	// Write capacity concurrently
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			// Do random sleep
-			time.Sleep(time.Duration(rand.Int()) % 100 * time.Millisecond)
-
-			// Simulate setting the capacity
-			dequeue.SetCapacity(rand.Int() % 100)
-		}()
-	}
-
-	wg.Wait()
-
-	// No checks need to be done, if the test is here without race conditions, it passed
 }
