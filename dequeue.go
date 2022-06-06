@@ -16,7 +16,7 @@ type BlockingDequeue[T any] struct {
 	isEmpty     bool
 }
 
-// Creates a new blocking dequeue with infinite capacity.
+// Creates a new blocking dequeue with the provided buffer.
 // The dequeue MUST only be created using this method.
 func NewBlockingDequeue[T any](buffer []T) *BlockingDequeue[T] {
 	d := new(BlockingDequeue[T])
@@ -35,6 +35,7 @@ func NewBlockingDequeue[T any](buffer []T) *BlockingDequeue[T] {
 }
 
 // =================================[Buffer helpers]=================================
+
 func (d BlockingDequeue[T]) nextIndex(i int) int {
 	return (i + 1) % len(d.buffer)
 }
@@ -153,7 +154,8 @@ func (d *BlockingDequeue[T]) PeekBack() T {
 	return d.buffer[d.last]
 }
 
-// ================================[Size/Capacity related]================================
+// ================================[Size related]================================
+
 // Return the number of elements in the dequeue.
 func (d *BlockingDequeue[T]) Size() int {
 	d.lock.Lock()
@@ -190,7 +192,6 @@ func (d *BlockingDequeue[T]) isFull_unsafe() bool {
 }
 
 // Return true if the dequeue is full.
-// i.e. the dequeue has limited capacity and the current size is equal to that capacity.
 func (d *BlockingDequeue[T]) IsFull() bool {
 	d.lock.Lock()
 	defer d.lock.Unlock()
