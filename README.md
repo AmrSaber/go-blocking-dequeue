@@ -4,7 +4,7 @@
 ![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/AmrSaber/go-blocking-dequeue?color=blue&display_name=tag&sort=semver)
 ![GitHub license](https://img.shields.io/github/license/AmrSaber/go-blocking-dequeue)
 
-This package (repo) provides an implementation of a thread-safe, blocking, generic, infinite dequeue that can be used as FIFO or LIFO or a hybrid between the 2.
+This package (repo) provides an implementation of a thread-safe, blocking, generic dequeue that can be used as FIFO or LIFO or a hybrid between the 2.
 
 ## Installation
 
@@ -32,11 +32,13 @@ To create a new dequeue use `blocking_dequeue.NewBlockingDequeue` function as fo
 
 ```go
 // Integers dequeue
-integersDequeue := blocking_dequeue.NewBlockingDequeue[int]()
+buffer := make([]int, 10)
+integersDequeue := blocking_dequeue.NewBlockingDequeue(buffer)
 integersDequeue.PushBack(10)
 
 // Strings dequeue
-stringsDequeue := blocking_dequeue.NewBlockingDequeue[string]()
+buffer := make([]string, 10)
+stringsDequeue := blocking_dequeue.NewBlockingDequeue(buffer)
 stringsDequeue.PushBack("hello")
 
 type User struct {
@@ -45,36 +47,27 @@ type User struct {
 }
 
 // Dequeue of custom type
-usersDequeue := blocking_dequeue.NewBlockingDequeue[User]()
+buffer := make([]User, 10)
+usersDequeue := blocking_dequeue.NewBlockingDequeue(buffer)
 usersDequeue.PushBack(User{ "Amr", 25 })
 
 // Pointer dequeue
-usersPtrDequeue := blocking_dequeue.NewBlockingDequeue[*User]()
+buffer := make([]*User, 10)
+usersPtrDequeue := blocking_dequeue.NewBlockingDequeue(buffer)
 usersPtrDequeue.PushBack(&User{ "Amr", 25 })
 ```
 
-The dequeue is implemented using generics, so it can hold any datatype, just pass the data type you want between the square brackets `[ ]`.
+The dequeue is implemented using generics, so it can hold any datatype, just create a buffer with the desired datatype and pass it to the creation function.
 
 ### Capacity
 
-You can set a capacity if you want (the default is unlimited capacity)
-
-```go
-dequeue.SetCapacity(100) // Limit the dequeue to only carry 100 elements
-dequeue.SetCapacity(0) // Infinite capacity (the default)
-```
-
-Some notes about setting the capacity:
-
-- Pushing to the dequeue will block if it has full capacity, the goroutine will be blocked until some values are popped from the dequeue.
-- As in the above example, setting the capacity to 0 means having infinite capacity.
-- If you attempt the set the capacity to be lower than the current size of the dequeue, the method `SetCapacity` will return an error, and the capacity won't be updated. The same thing will also happen if you try to set the capacity with a negative number.
-- You can always set the capacity to 0 regardless of the current size.
+The capacity of the dequeue is the length of the provided buffer.
 
 ### Usage as Queue
 
 ```go
-dq := blocking_dequeue.NewBlockingDequeue[int]()
+buffer := make([]int, 10)
+dq := blocking_dequeue.NewBlockingDequeue(buffer)
 
 dq.PushBack(1) // Pushed to the end of the dequeue
 dq.PushBack(2) // Pushed to the end of the dequeue
@@ -88,7 +81,8 @@ dq.PopFront() // Pops from the top, returns 3
 ### Usage as Stack
 
 ```go
-dq := blocking_dequeue.NewBlockingDequeue[int]()
+buffer := make([]int, 10)
+dq := blocking_dequeue.NewBlockingDequeue(buffer)
 
 dq.PushFront(1) // Pushed to the start of the dequeue
 dq.PushFront(2) // Pushed to the start of the dequeue
@@ -108,22 +102,21 @@ The dequeue itself exposes the following methods:
 - `PushFront`, `PushBack`
 - `PopFront`, `PopBack`
 - `PeekFront`, `PeekBack`
-- `Capacity`, `SetCapacity`, `IsFull`
-- `Size`, `IsEmpty`
+- `Size`, `IsEmpty`, `IsFull`
 
 The detailed documentation can be found at the related [go packages page](https://pkg.go.dev/github.com/AmrSaber/go-blocking-dequeue#section-documentation).
 
 ## Limitations and Drawbacks
 
-This dequeue is implemented using build-in `container/list` so all of the operations are done in O(1) time complexity.
+This dequeue is implemented using ring (or circular) buffer so all of the operations are done in O(1) time complexity.
 
-However, due to the thread-safe nature, and all the lock/unlock/wait/signal/broadcast logic, it's expected to be a bit slower than the plain `container/list`. If you intend to use this dequeue in a single threaded context (where only a single goroutine will have access to it) it's advised to use the built-in `container/list` instead.
+However, due to the thread-safe nature, and all the lock/unlock/wait/signal logic, it's expected to be a bit slower than plain ring buffer. If you intend to use this dequeue in a single threaded context (where only a single goroutine will have access to it) it's advised to use plain circular buffer or the built-in `container/list` instead.
 
 If you intend to use it as a limited capacity queue to communicate between goroutines, it would be better to use built-in channels with buffer, so instead of
 
 ```go
-dq := blocking_dequeue.NewBlockingDequeue[int]()
-dq.SetCapacity(10)
+buffer := make([]int, 10)
+dq := blocking_dequeue.NewBlockingDequeue(buffer)
 
 // Push to queue
 dq.PushBack(1)
@@ -148,7 +141,7 @@ That is unless you need access the other provided methods, such as `Peek` variat
 
 ## Benchmarking
 
-No benchmarking against the built-in `container/list` nor channels yet. But it's in the plan.
+No benchmarking against plain ring buffer or the built-in `container/list` nor channels yet. But it's in the plan.
 
 ## Contribution
 
